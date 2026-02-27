@@ -1,26 +1,24 @@
 /*
 追加要件:
-  let value = 2
-  if value <= 3 { print("valueは3以下です") }
+  func double(_ x: Int) -> Int { return x * 2 }
+  double(2) // 4
 
-を「今までのもの」に統合し、詳細コメント付きで示す。
+を「今までの統合コード」に追加し、詳細コメント付きで統合する。
 
-ポイント:
-- if は条件分岐（ブール式が true のときだけ処理を実行する）
-- `<=` は「以下（less than or equal）」で、比較の結果は Bool（true/false）になる
-- SwiftUIでは `print` はコンソール出力であり、UIには直接見えない
-  → 学習としては「コンソールに出る」ことも見せつつ、
-     画面にも同じ判定結果を表示すると理解しやすい
+今回の学習ポイント（関数）:
+- func は「入力（引数）→出力（戻り値）」の変換をまとめたもの
+- `(_ x: Int)` の `_` は「呼び出し側の引数ラベルを省略する」指定
+  - double(2) と書ける（double(x: 2) ではない）
+- `-> Int` は戻り値の型
+- `return x * 2` は Int の掛け算で、結果も Int
 
-また、これまでの統合版では
-- グローバルの未初期化 var/let エラー回避のため `globalA/globalB`
-- ユーザー指定の配列 `a` / `b`
-- SwiftUIの @State model による表示
-を含んでいる。そこに `value` と if 判定を追加する。
+SwiftUIとの接続:
+- 関数結果を Text に表示することで「値→UI」の流れに乗せる
+- print でコンソール確認もできるが、body内に副作用を置かないよう onAppear を利用する
 */
 
 /// グローバル（ファイル直下）の `var` は初期値が必要なので初期化する。
-/// - ただしSwiftUIではグローバルは極力使わず、@State等で管理するのが基本。
+/// - SwiftUIで画面に反映したい状態は @State 等で管理するのが基本だが、ここでは言語仕様の説明用に残している。
 var globalA: Int = 0
 
 /// グローバル（ファイル直下）の `let` も初期値が必要なので初期化する。
@@ -29,14 +27,42 @@ let globalB: Int = 100
 /// ユーザー指定の配列追加（そのまま a/b という名前で定義）
 /// - a は [Int]
 /// - b は [String]
-/// ※ 既存の Int の a/b と同名にすると衝突するため、Int側は globalA/globalB や model.a/model.b として分離している。
+/// ※ model.a/model.b（Int）と同名にならないよう、Int側は model の中に閉じている。
 let a = [1, 2, 3]          // [Int]
 let b = ["a", "b", "c"]    // [String]
 
 /// 追加要件: if 条件分岐の入力値
-/// - let なので不変（immutable）
-/// - ここでは 2 を固定して、判定結果が true になるケースを示す
+/// - let なので固定値
 let value = 2
+
+// MARK: - 追加要件: 関数 double
+//
+// `double` は「Int を受け取り、2倍した Int を返す」純粋関数である。
+// ここでの純粋（pure）という意味は、同じ入力に対して常に同じ出力を返し、
+// 外部状態を変更しない（副作用がない）という性質を指す。
+// 学習の観点では、SwiftUIの body に安全に組み込める処理の典型でもある。
+//
+// 引数の書き方:
+//   func double(_ x: Int) -> Int
+//        ^^^^^
+//        `_` は「引数ラベル（argument label）を省略する」指定である。
+// これにより呼び出し側は
+//   double(2)
+// のように書ける。
+// `_` が無い場合（例: func double(x: Int) -> Int）だと
+//   double(x: 2)
+// と書く必要がある。
+func double(_ x: Int) -> Int {
+    // x * 2 は Int 同士の乗算であり、結果も Int。
+    // Swiftは静的型付けなので、ここで型が不整合ならコンパイル時に弾かれる。
+    return x * 2
+}
+
+// `double(2)` の結果は 4。
+// ただし、ファイル直下での式の評価や print は学習的にはOKでも、
+// 実アプリでは「いつ実行されるか」が曖昧になりやすいので、
+// 画面表示や onAppear で確認する方が分かりやすい。
+let doubledExample = double(2) // 4
 
 //
 //  ContentView.swift
@@ -47,6 +73,7 @@ let value = 2
 //  - 静的型付け（Int, String）
 //  - 配列（Array: 同型要素コレクション）
 //  - if 条件分岐（Bool式で処理を分岐）
+//  - 関数（入力→出力の変換: double）
 //
 //  Created by maton on 2026/02/23.
 //
@@ -54,21 +81,12 @@ let value = 2
 import SwiftUI
 
 // MARK: - 型 + var/let + 配列(Array) のデモ用モデル
-//
-// SwiftUIでは「画面に出す状態（State）」をモデルとしてまとめると見通しが良い。
-// ここでは
-// - a（可変 Int）
-// - b（不変 Int）
-// - intArray（不変 [Int]）
-// - stringArray（不変 [String]）
-// を保持し、SwiftUIで表示する。
 struct VarLetArrayDemoModel {
-    var a: Int          // var: 可変（後から再代入できる）
-    let b: Int          // let: 不変（初期化後は固定）
-    let intArray: [Int] // [Int]: Intの配列
-    let stringArray: [String] // [String]: Stringの配列
+    var a: Int
+    let b: Int
+    let intArray: [Int]
+    let stringArray: [String]
     
-    // struct（値型）の中でプロパティを書き換えるので `mutating` が必要
     mutating func assignIntToA() {
         a = 456
     }
@@ -76,8 +94,6 @@ struct VarLetArrayDemoModel {
 
 // MARK: - SwiftUI View
 struct ContentView: View {
-    // @State は「この値が変化したらUIを更新する」というSwiftUIの状態管理である。
-    // ここで変化するのは model.a のみ（ボタンで更新）。
     @State private var model = VarLetArrayDemoModel(
         a: 0,
         b: 100,
@@ -85,16 +101,21 @@ struct ContentView: View {
         stringArray: ["a", "b", "c"]
     )
     
-    // 追加要件の if 判定結果を SwiftUI上でも見せるため、判定を computed property にする。
-    //
-    // `value <= 3` は比較演算であり、結果は Bool（true/false）になる。
-    // - true なら「条件を満たす」
-    // - false なら「条件を満たさない」
-    //
-    // ここではグローバルの `value` を参照しているが、
-    // 学習が進んだら `@State private var value = 2` のように View 内へ移すのがより自然。
+    // `value <= 3` の比較結果（Bool）をまとめておく。
+    // body側で同じ式を何度も書かなくて済む上、意味が明確になる。
     private var isValueLeq3: Bool {
         value <= 3
+    }
+    
+    // 関数 double をUI表示で使うために、例の入力を定義しておく。
+    // - ここは let なので固定であり、常に同じ結果が表示される。
+    // - もし動的に変えたいなら @State にしてStepper等で更新すると良い。
+    private let doubleInput: Int = 2
+    
+    // double の結果（Int）を計算する computed property。
+    // double は副作用がない純粋関数なので、body再評価時に何度呼ばれても安全である。
+    private var doubleResult: Int {
+        double(doubleInput)
     }
     
     var body: some View {
@@ -111,7 +132,6 @@ struct ContentView: View {
                 .foregroundStyle(.secondary)
             
             Button("model.a に 456（Int）を代入する") {
-                // varなので再代入できる
                 model.assignIntToA()
             }
             .buttonStyle(.borderedProminent)
@@ -121,12 +141,8 @@ struct ContentView: View {
                 Text("配列（Array）の例")
                     .font(.headline)
                 
-                // Int配列: String化して joined
                 Text("intArray（[Int]）= [\(model.intArray.map(String.init).joined(separator: ", "))]")
-                
-                // String配列: そのまま joined
                 Text("stringArray（[String]）= [\(model.stringArray.joined(separator: ", "))]")
-                
                 Text("intArray.count = \(model.intArray.count), stringArray.count = \(model.stringArray.count)")
                     .foregroundStyle(.secondary)
             }
@@ -135,39 +151,49 @@ struct ContentView: View {
             .background(.thinMaterial)
             .clipShape(RoundedRectangle(cornerRadius: 12))
             
-            // if 条件分岐の表示（追加）
+            // if 条件分岐の表示
             VStack(alignment: .leading, spacing: 10) {
                 Text("if 条件分岐の例")
                     .font(.headline)
                 
-                // value は let なので固定値として表示される
                 Text("value = \(value)")
-                
-                // 判定式と結果を見せる
                 Text("判定: value <= 3 は \(isValueLeq3 ? "true" : "false")")
                     .foregroundStyle(.secondary)
                 
-                // if は「条件がtrueのときだけ」処理を実行する。
-                // SwiftUIでは if を View の中で使うと「表示の分岐」にも使える。
+                // SwiftUIでは if を View の構造分岐として使える。
                 if isValueLeq3 {
-                    // 追加要件の print と同じ意味のメッセージをUIでも表示する。
                     Text("valueは3以下です")
                         .font(.title3)
-                    
-                    // print はコンソール出力。UIには出ないが、デバッグ・学習には有用。
-                    // 注意: SwiftUIでは body が再評価されるたびに実行されうるため、
-                    //       ここに print を置くと再描画のたびにログが増える可能性がある。
-                    //
-                    // そのため、print を「確実に一回だけ」出したいなら
-                    // onAppear / ボタン / イベントハンドラ内に置くのが安全。
                 } else {
                     Text("valueは3より大きいです")
                         .font(.title3)
                 }
                 
-                // 「追加要件どおりの if + print」を、学習用にそのままの形で載せる（コメントとして保持）。
-                // 実際に print を確実に一回だけ動かすなら、下の onAppear の方が挙動が安定する。
-                Text("（コンソール出力は下の onAppear で確認）")
+                Text("（コンソール出力は onAppear で確認）")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding()
+            .background(.thinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            
+            // 追加: 関数 double の表示
+            VStack(alignment: .leading, spacing: 10) {
+                Text("関数（double）の例")
+                    .font(.headline)
+                
+                // 入力と出力をセットで表示し、「関数=変換」であることを見せる。
+                Text("入力: double(\(doubleInput))")
+                Text("出力: \(doubleResult)")
+                    .font(.title3)
+                
+                // ユーザー指定の「double(2) // 4」と対応付ける説明
+                Text("例: double(2) = 4")
+                    .foregroundStyle(.secondary)
+                
+                // 引数ラベル `_` の意味をUIでも説明しておく
+                Text("※ 定義が func double(_ x: Int) -> Int なので、呼び出しは double(2) と書ける（double(x: 2) ではない）。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -177,16 +203,16 @@ struct ContentView: View {
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }
         .padding()
-        
-        // SwiftUIのライフサイクルイベント例:
-        // - onAppear は View が表示されたタイミングで呼ばれる。
-        // - 追加要件の if + print を「一回だけ実行したい」場合に適している。
         .onAppear {
-            // 追加要件そのまま:
-            // `value <= 3` が true のときだけ print が走る。
+            // 追加要件（if + print）を「表示タイミングで一回だけ」実行する。
+            // SwiftUIでは body が何度も再評価されるので、副作用はここやボタンactionに寄せるのが安全。
             if value <= 3 {
                 print("valueは3以下です")
             }
+            
+            // 追加要件（double）の結果をコンソールでも確認できるようにする。
+            // ここでの print は onAppear で一回だけなのでログが増え続けにくい。
+            print("double(2) = \(double(2))") // 4
         }
     }
 }
