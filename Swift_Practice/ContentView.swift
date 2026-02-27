@@ -1,144 +1,145 @@
 /*
-修正方針（重要）:
-- SwiftUI アプリ（Xcode の App テンプレ）では「トップレベル（ファイル直下）」に
-  実行文（関数呼び出しや式）を書けない。
-  そのため、次の行はコンパイルエラーになる。
+追加要件:
+  func printIfEqual<T: Equatable>(_ arg1: T, _ arg2: T) {
+      if arg1 == arg2 {
+          print("Both are \(arg1)")
+      }
+  }
+  printIfEqual(123, 123)
+  printIfEqual("str", "str")
 
-    doubleA.formSquareRoot()   // ❌ Expressions are not allowed at the top level
+を「今までの統合コード」に追加し、詳細コメント付きで統合する。
 
-- トップレベルに置けるのは「宣言（var/let/struct/class/enum/func）」だけ。
-- 実行したい処理は、(1) メソッドの中、(2) init / onAppear / ボタン action などの中に移す。
-
-今回の修正:
-- トップレベルの `doubleA.formSquareRoot()` を削除（実行文を排除）
-- Double の「値コピー + mutating」を確認する処理は、すでに用意している
-  `DoubleCopyDemoModel`（+ SwiftUI のボタン）に一本化する
-- onAppear でのコンソール確認も、グローバル `doubleA/doubleB` を参照せず
-  `doubleModel`（状態）を参照する形にする（設計の一貫性が上がる）
-
-また、既存の「配列 a/b」と「Doubleの a/b」が名前衝突しやすいので、
-トップレベルの Double例は「宣言だけ」残し、実行はしない。
-（学習としては View 内の doubleModel で十分観測できる）
+今回の学習ポイント（ジェネリクス + 制約 + Equatable + if + print）:
+- `printIfEqual<T: Equatable>` はジェネリック関数である。
+  - T は「型パラメータ」で、呼び出し時に Int や String など具体的な型に置き換わる。
+- `T: Equatable` は「型制約（constraint）」である。
+  - T は Equatable に準拠している必要がある。
+  - つまり `==` で比較できる型だけ受け付ける。
+- 引数ラベル `_` により、呼び出しは `printIfEqual(123, 123)` のように書ける。
+- 本体では `if arg1 == arg2` で等価性を判定し、true の場合だけ print する。
+- SwiftUIとの接続では、printはコンソール出力でありUIには出ない。
+  - そのため「UIにも結果を出す」には、printの代わりに文字列を返す関数にする、
+    あるいは SwiftUI の状態（@State）を更新して Text に表示するのが基本。
+  - ただし「今回の追加要件は print する関数」なので、実行場所は onAppear などに寄せて、
+    body再評価でログが増殖しないようにする。
 */
 
-/// グローバル（ファイル直下）の `var` は初期値が必要なので初期化する。
-var globalA: Int = 0
+// ------------------------------
+// 既存: トップレベル（宣言のみ）
+// ------------------------------
 
-/// グローバル（ファイル直下）の `let` も初期値が必要なので初期化する。
+var globalA: Int = 0
 let globalB: Int = 100
 
-/// ユーザー指定の配列追加（そのまま a/b という名前で定義）
-/// - a は [Int]
-/// - b は [String]
 let a = [1, 2, 3]          // [Int]
 let b = ["a", "b", "c"]    // [String]
 
-/// if 条件分岐の入力値（固定）
 let value = 2
 
-// MARK: - 関数 double（純粋関数の例）
-//
-// 追加要件: func double(_ x: Int) -> Int { return x * 2 }
+// MARK: - 関数 double（純粋関数）
 func double(_ x: Int) -> Int {
     return x * 2
 }
+let doubledExample = double(2) // 4（宣言+初期化なのでOK）
 
-/// トップレベルで「関数呼び出しを実行」したくなるが、SwiftUIアプリでは
-/// `let doubledExample = double(2)` のような初期化式（initializer）は書ける。
-/// （これは「宣言 + 初期化」であり、単独の実行文ではない）
-/// ただし教材としては View 内表示で十分なので、残しても良いし消しても良い。
-let doubledExample = double(2) // 4
-
-// MARK: - struct / class / enum（型定義の例）
+// MARK: - struct / class / enum
 struct SomeStruct {}
 class SomeClass {}
 enum SomeEnum {}
 
-/// 型名を文字列化してUI/コンソールに表示するための値（宣言+初期化なのでOK）
 let structTypeName = String(describing: SomeStruct.self)
 let classTypeName  = String(describing: SomeClass.self)
 let enumTypeName   = String(describing: SomeEnum.self)
 
-// MARK: - Doubleの値コピーと formSquareRoot（トップレベルは「宣言のみ」）
-//
-// ユーザー指定の例（概念）:
-//   var a = 4.0
-//   var b = a
-//   a.formSquareRoot()
-//
-// これをトップレベルで “実行” するとエラーになるため、ここでは
-// - 「宣言（初期化）だけ」置く
-// - 実際の平方根適用（mutating実行）は SwiftUI の状態（doubleModel）で行う
-//
-// ※ `var doubleA = 4.0` / `var doubleB = doubleA` は初期化式なのでOK。
-// ※ しかし `doubleA.formSquareRoot()` は単独の実行文なのでNG。
+// MARK: - Double（宣言のみ。トップレベルでの実行文は置かない）
 var doubleA = 4.0
 var doubleB = doubleA
+
+// ------------------------------------------
+// 追加要件: ジェネリック関数 printIfEqual
+// ------------------------------------------
+
+/*
+ジェネリック関数の定義:
+- <T: Equatable> は「型パラメータT」に制約を付けている。
+- Equatable に準拠している型は `==` が使えるので、ifで比較できる。
+- `_` により引数ラベルを省略できるため、呼び出しは printIfEqual(123, 123) の形になる。
+
+この関数の動作:
+- arg1 と arg2 が等しいときだけ print を行う（等しくない場合は何もしない）
+*/
+func printIfEqual<T: Equatable>(_ arg1: T, _ arg2: T) {
+    // Equatable 制約があるので `==` が使える
+    if arg1 == arg2 {
+        // 文字列補間（String Interpolation）で arg1 の値を埋め込む
+        // ここで \(arg1) は、arg1 を String 化して文字列に挿入する構文である。
+        print("Both are \(arg1)")
+    }
+}
+
+/*
+注意（SwiftUIアプリのトップレベル実行禁止）:
+- printIfEqual(123, 123) のような「実行文」をファイル直下に置くと、
+  SwiftUIアプリではコンパイルエラーになりうる（トップレベル実行不可）。
+- したがって、呼び出しは onAppear やボタンaction の中で行う。
+*/
+
+// 例の「呼び出し結果」を UI にも見せたい場合は、print ではなく String を返す関数にするのが自然。
+// ただし追加要件が print なので、ここでは補助関数として別に用意しておく（教材用）。
+//
+// - printIfEqual: コンソール向け（副作用）
+// - messageIfEqual: UI向け（純粋関数）
+func messageIfEqual<T: Equatable>(_ arg1: T, _ arg2: T) -> String? {
+    if arg1 == arg2 {
+        return "Both are \(arg1)"
+    }
+    return nil
+}
 
 //
 //  ContentView.swift
 //  Swift_Practice
 //
-//  Swiftの学習要素を段階的に追加した統合サンプルである。
-//  - var / let（可変・不変）
-//  - 静的型付け（Int, String, Double）
+//  ここまでの学習要素:
+//  - var / let
+//  - 型（Int, String, Double）
 //  - 配列（Array）
 //  - if 条件分岐
 //  - 関数（double）
 //  - 型定義（struct / class / enum）
-//  - 値型のコピー（Double）と mutating メソッド（formSquareRoot）
-//
-//  Created by maton on 2026/02/23.
+//  - Double 値コピー + mutating（formSquareRoot）
+//  - ジェネリクス + 制約（printIfEqual<T: Equatable>）
 //
 
 import SwiftUI
 
-// MARK: - 型 + var/let + 配列(Array) のデモ用モデル（値型struct）
 struct VarLetArrayDemoModel {
     var a: Int
     let b: Int
     let intArray: [Int]
     let stringArray: [String]
     
-    // struct（値型）のプロパティを書き換えるので mutating が必要
     mutating func assignIntToA() {
         a = 456
     }
 }
 
-// MARK: - Doubleコピー + formSquareRoot のデモ用モデル（値型struct）
-//
-// ここが「ユーザー指定の a/b の例」を SwiftUIで安全に実行する場所。
-// - init で rootA/rootB を同じ値から開始（b = a の値コピーに相当）
-// - applySquareRootToA() で rootA だけを in-place 更新（a.formSquareRoot() に相当）
 struct DoubleCopyDemoModel {
-    // aに相当（平方根を適用して変化する側）
     var rootA: Double
-    
-    // bに相当（aのコピーなので、aの更新の影響を受けない側）
     var rootB: Double
     
     init(initial: Double) {
-        // ユーザー指定:
-        //   var a = 4.0
-        //   var b = a
-        // に対応する初期化
         self.rootA = initial
-        self.rootB = initial // ここで値コピー
+        self.rootB = initial
     }
     
     mutating func applySquareRootToA() {
-        // ユーザー指定:
-        //   a.formSquareRoot()
-        // に対応する処理。
-        // formSquareRoot は mutating で in-place 更新するため rootA が書き換わる。
         rootA.formSquareRoot()
     }
 }
 
-// MARK: - SwiftUI View（Viewはstruct）
 struct ContentView: View {
-    // 既存: Int/配列デモ
     @State private var model = VarLetArrayDemoModel(
         a: 0,
         b: 100,
@@ -146,8 +147,12 @@ struct ContentView: View {
         stringArray: ["a", "b", "c"]
     )
     
-    // 追加: Doubleコピーのデモ
     @State private var doubleModel = DoubleCopyDemoModel(initial: 4.0)
+    
+    // 追加: ジェネリック関数の結果をUIに表示するための状態
+    // - printIfEqual はコンソール出力なのでUIには出ない
+    // - messageIfEqual を使って「表示用文字列」を作り、ここに入れる
+    @State private var equalMessages: [String] = []
     
     private var isValueLeq3: Bool {
         value <= 3
@@ -155,13 +160,8 @@ struct ContentView: View {
     
     private let doubleInput: Int = 2
     private var doubleResult: Int {
-        // double は純粋関数なので body 再評価で何度呼ばれても安全
         double(doubleInput)
     }
-    
-    // Doubleデモの「期待値」を UI に出すための補助
-    private var expectedAfterSqrt: Double { 2.0 }
-    private var expectedB: Double { 4.0 }
     
     var body: some View {
         VStack(spacing: 16) {
@@ -169,7 +169,6 @@ struct ContentView: View {
                 .imageScale(.large)
                 .foregroundStyle(.tint)
             
-            // var / let の表示
             Text("model.a（var, Int）= \(model.a)")
                 .font(.title2)
             Text("model.b（let, Int）= \(model.b)")
@@ -181,7 +180,6 @@ struct ContentView: View {
             }
             .buttonStyle(.borderedProminent)
             
-            // 配列の表示
             VStack(alignment: .leading, spacing: 10) {
                 Text("配列（Array）の例")
                     .font(.headline)
@@ -196,7 +194,6 @@ struct ContentView: View {
             .background(.thinMaterial)
             .clipShape(RoundedRectangle(cornerRadius: 12))
             
-            // if 条件分岐の表示
             VStack(alignment: .leading, spacing: 10) {
                 Text("if 条件分岐の例")
                     .font(.headline)
@@ -212,17 +209,12 @@ struct ContentView: View {
                     Text("valueは3より大きいです")
                         .font(.title3)
                 }
-                
-                Text("（コンソール出力は onAppear で確認）")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding()
             .background(.thinMaterial)
             .clipShape(RoundedRectangle(cornerRadius: 12))
             
-            // 関数 double の表示
             VStack(alignment: .leading, spacing: 10) {
                 Text("関数（double）の例")
                     .font(.headline)
@@ -230,17 +222,12 @@ struct ContentView: View {
                 Text("入力: double(\(doubleInput))")
                 Text("出力: \(doubleResult)")
                     .font(.title3)
-                
-                Text("※ func double(_ x: Int) -> Int の `_` により、呼び出しは double(2) と書ける。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding()
             .background(.thinMaterial)
             .clipShape(RoundedRectangle(cornerRadius: 12))
             
-            // 型定義（struct / class / enum）の表示
             VStack(alignment: .leading, spacing: 10) {
                 Text("型定義（struct / class / enum）の例")
                     .font(.headline)
@@ -248,8 +235,26 @@ struct ContentView: View {
                 Text("struct: \(structTypeName)（値型）")
                 Text("class : \(classTypeName)（参照型）")
                 Text("enum  : \(enumTypeName)（状態の型）")
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding()
+            .background(.thinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Doubleの値コピー + formSquareRoot の例")
+                    .font(.headline)
                 
-                Text("※ SwiftUIのViewはstructが基本。共有状態はclass（ObservableObject）を使うことが多い。UI状態はenumが便利。")
+                Text("rootA（aに相当）= \(doubleModel.rootA)")
+                Text("rootB（bに相当）= \(doubleModel.rootB)")
+                    .foregroundStyle(.secondary)
+                
+                Button("rootA に formSquareRoot() を適用する") {
+                    doubleModel.applySquareRootToA()
+                }
+                .buttonStyle(.bordered)
+                
+                Text("ポイント: Doubleは値型。rootBはrootAの変更の影響を受けない。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -258,31 +263,26 @@ struct ContentView: View {
             .background(.thinMaterial)
             .clipShape(RoundedRectangle(cornerRadius: 12))
             
-            // Doubleの値コピー + formSquareRoot（追加・修正版）
+            // 追加: ジェネリクス（Equatable）デモ
             VStack(alignment: .leading, spacing: 10) {
-                Text("Doubleの値コピー + formSquareRoot の例")
+                Text("ジェネリクス（T: Equatable）の例")
                     .font(.headline)
                 
-                // 現在値
-                Text("rootA（aに相当）= \(doubleModel.rootA)")
-                Text("rootB（bに相当）= \(doubleModel.rootB)")
-                    .foregroundStyle(.secondary)
-                
-                // 期待される挙動を明示（教材としての“正解”）
-                Text("期待: rootAは平方根後 \(expectedAfterSqrt), rootBは \(expectedB) のまま")
+                Text("printIfEqual はコンソール出力、messageIfEqual はUI表示用。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 
-                Button("rootA に formSquareRoot() を適用する") {
-                    // 実行文（mutating更新）はボタンactionに置く。
-                    // ここなら「押したときだけ」実行され、body再評価で暴発しない。
-                    doubleModel.applySquareRootToA()
+                // equalMessages は onAppear で作っておき、ここで一覧表示する。
+                if equalMessages.isEmpty {
+                    Text("（まだ結果がありません）")
+                        .foregroundStyle(.secondary)
+                } else {
+                    // SwiftUIで配列を表示する定番: ForEach
+                    // id: \.self は、StringがHashableなので自己同一性で識別できるという指定。
+                    ForEach(equalMessages, id: \.self) { msg in
+                        Text(msg)
+                    }
                 }
-                .buttonStyle(.bordered)
-                
-                Text("ポイント: Doubleは値型。rootBはrootAの“参照”ではなく“コピー”なので、rootA更新の影響を受けない。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding()
@@ -291,23 +291,26 @@ struct ContentView: View {
         }
         .padding()
         .onAppear {
-            // if + print（表示時に一回だけ）
+            // 追加要件の呼び出し（コンソール出力）
+            // ここなら「表示時に一回だけ」実行しやすく、body再評価で増殖しにくい。
+            printIfEqual(123, 123)
+            printIfEqual("str", "str")
+            
+            // UI表示用に、同じ判定を messageIfEqual で作って配列へ入れる。
+            // （print結果をそのまま取り込むより、UI向けは純粋関数で作る方が設計が安全）
+            equalMessages = [
+                messageIfEqual(123, 123),
+                messageIfEqual("str", "str")
+            ].compactMap { $0 } // nil を除外して [String] にする
+            
+            // 既存のコンソール確認（学習用）
             if value <= 3 {
                 print("valueは3以下です")
             }
-            
-            // double の確認
-            print("double(2) = \(double(2))") // 4
-            
-            // 型名の確認（コンソール）
+            print("double(2) = \(double(2))")
             print("struct type = \(structTypeName)")
             print("class  type = \(classTypeName)")
             print("enum   type = \(enumTypeName)")
-            
-            // Double値コピーの確認（コンソール）
-            // ここではトップレベル実行を避けているため、初期状態（4.0/4.0）を表示する。
-            print("doubleModel.rootA(initial) = \(doubleModel.rootA)")
-            print("doubleModel.rootB(initial) = \(doubleModel.rootB)")
         }
     }
 }
