@@ -1,26 +1,24 @@
 /*
-追加要件:
-  // 構造体
-  struct SomeStruct {}
-  // クラス
-  class SomeClass {}
-  // 列挙型
-  enum SomeEnum {}
+修正方針（重要）:
+- SwiftUI アプリ（Xcode の App テンプレ）では「トップレベル（ファイル直下）」に
+  実行文（関数呼び出しや式）を書けない。
+  そのため、次の行はコンパイルエラーになる。
 
-を、これまでの統合コードに追加する。
+    doubleA.formSquareRoot()   // ❌ Expressions are not allowed at the top level
 
-今回の学習ポイント（型定義の3種）:
-- struct（構造体）: 値型（value type）。代入や引数渡しで「値のコピー」が基本（ただしCopy-on-Write最適化も多い）。
-- class（クラス） : 参照型（reference type）。代入や引数渡しで「参照（同じ実体）」を共有する。
-- enum（列挙）   : 限られたケース（状態）を型として表現する。SwiftではAssociated Valueなどで強力に状態表現できる。
+- トップレベルに置けるのは「宣言（var/let/struct/class/enum/func）」だけ。
+- 実行したい処理は、(1) メソッドの中、(2) init / onAppear / ボタン action などの中に移す。
 
-SwiftUIとの関係（重要）:
-- SwiftUI の View は基本的に struct で書く（値型 + 差分更新に相性が良い）。
-- 状態（State）は値の変化をトリガーにUIが更新されるので、値型中心の設計が自然。
-- 一方、共有したい長寿命の状態は class（ObservableObject / @StateObject など）を使うことが多い。
-- enum は UI の状態遷移（例: loading / success / error）を表現するのに非常に便利。
+今回の修正:
+- トップレベルの `doubleA.formSquareRoot()` を削除（実行文を排除）
+- Double の「値コピー + mutating」を確認する処理は、すでに用意している
+  `DoubleCopyDemoModel`（+ SwiftUI のボタン）に一本化する
+- onAppear でのコンソール確認も、グローバル `doubleA/doubleB` を参照せず
+  `doubleModel`（状態）を参照する形にする（設計の一貫性が上がる）
 
-ここでは学習用に空の型を定義しつつ、SwiftUI画面で「どの型か」を表示できるようにする。
+また、既存の「配列 a/b」と「Doubleの a/b」が名前衝突しやすいので、
+トップレベルの Double例は「宣言だけ」残し、実行はしない。
+（学習としては View 内の doubleModel で十分観測できる）
 */
 
 /// グローバル（ファイル直下）の `var` は初期値が必要なので初期化する。
@@ -39,44 +37,43 @@ let b = ["a", "b", "c"]    // [String]
 let value = 2
 
 // MARK: - 関数 double（純粋関数の例）
+//
+// 追加要件: func double(_ x: Int) -> Int { return x * 2 }
 func double(_ x: Int) -> Int {
     return x * 2
 }
+
+/// トップレベルで「関数呼び出しを実行」したくなるが、SwiftUIアプリでは
+/// `let doubledExample = double(2)` のような初期化式（initializer）は書ける。
+/// （これは「宣言 + 初期化」であり、単独の実行文ではない）
+/// ただし教材としては View 内表示で十分なので、残しても良いし消しても良い。
 let doubledExample = double(2) // 4
 
-// MARK: - 追加要件: struct / class / enum（型定義の例）
-
-// 構造体（struct）
-// - 値型（value type）である。
-// - SwiftUIの View は struct で書くのが基本（ContentView も struct）。
-// - 値型なので「状態のスナップショット」を作りやすく、差分更新に相性が良い。
+// MARK: - struct / class / enum（型定義の例）
 struct SomeStruct {}
-
-// クラス（class）
-// - 参照型（reference type）である。
-// - 代入すると「同じインスタンス」を参照する（コピーではない）。
-// - SwiftUIでは、共有したい状態（ObservableObjectなど）に class を使うことが多い。
 class SomeClass {}
-
-// 列挙型（enum）
-// - 有限個の「状態」や「ケース」を表現する型である。
-// - Swiftは enum が非常に強力で、Associated Value を使うと状態機械を安全に表現できる。
-// - UI状態（ロード中/成功/失敗）などを表すのに便利。
 enum SomeEnum {}
 
-// 発展例（コメント）:
-// enum LoadingState {
-//     case idle
-//     case loading
-//     case success(data: String)
-//     case failure(error: Error)
-// }
-
-// ここでは「型が存在する」ことをSwiftUIで確認するため、型名（文字列）を用意する。
-// - 実際にインスタンス化しなくても、型名は表示できる。
+/// 型名を文字列化してUI/コンソールに表示するための値（宣言+初期化なのでOK）
 let structTypeName = String(describing: SomeStruct.self)
 let classTypeName  = String(describing: SomeClass.self)
 let enumTypeName   = String(describing: SomeEnum.self)
+
+// MARK: - Doubleの値コピーと formSquareRoot（トップレベルは「宣言のみ」）
+//
+// ユーザー指定の例（概念）:
+//   var a = 4.0
+//   var b = a
+//   a.formSquareRoot()
+//
+// これをトップレベルで “実行” するとエラーになるため、ここでは
+// - 「宣言（初期化）だけ」置く
+// - 実際の平方根適用（mutating実行）は SwiftUI の状態（doubleModel）で行う
+//
+// ※ `var doubleA = 4.0` / `var doubleB = doubleA` は初期化式なのでOK。
+// ※ しかし `doubleA.formSquareRoot()` は単独の実行文なのでNG。
+var doubleA = 4.0
+var doubleB = doubleA
 
 //
 //  ContentView.swift
@@ -84,11 +81,12 @@ let enumTypeName   = String(describing: SomeEnum.self)
 //
 //  Swiftの学習要素を段階的に追加した統合サンプルである。
 //  - var / let（可変・不変）
-//  - 静的型付け（Int, String）
+//  - 静的型付け（Int, String, Double）
 //  - 配列（Array）
 //  - if 条件分岐
 //  - 関数（double）
 //  - 型定義（struct / class / enum）
+//  - 値型のコピー（Double）と mutating メソッド（formSquareRoot）
 //
 //  Created by maton on 2026/02/23.
 //
@@ -102,13 +100,45 @@ struct VarLetArrayDemoModel {
     let intArray: [Int]
     let stringArray: [String]
     
+    // struct（値型）のプロパティを書き換えるので mutating が必要
     mutating func assignIntToA() {
         a = 456
     }
 }
 
-// MARK: - SwiftUI View（これも struct）
+// MARK: - Doubleコピー + formSquareRoot のデモ用モデル（値型struct）
+//
+// ここが「ユーザー指定の a/b の例」を SwiftUIで安全に実行する場所。
+// - init で rootA/rootB を同じ値から開始（b = a の値コピーに相当）
+// - applySquareRootToA() で rootA だけを in-place 更新（a.formSquareRoot() に相当）
+struct DoubleCopyDemoModel {
+    // aに相当（平方根を適用して変化する側）
+    var rootA: Double
+    
+    // bに相当（aのコピーなので、aの更新の影響を受けない側）
+    var rootB: Double
+    
+    init(initial: Double) {
+        // ユーザー指定:
+        //   var a = 4.0
+        //   var b = a
+        // に対応する初期化
+        self.rootA = initial
+        self.rootB = initial // ここで値コピー
+    }
+    
+    mutating func applySquareRootToA() {
+        // ユーザー指定:
+        //   a.formSquareRoot()
+        // に対応する処理。
+        // formSquareRoot は mutating で in-place 更新するため rootA が書き換わる。
+        rootA.formSquareRoot()
+    }
+}
+
+// MARK: - SwiftUI View（Viewはstruct）
 struct ContentView: View {
+    // 既存: Int/配列デモ
     @State private var model = VarLetArrayDemoModel(
         a: 0,
         b: 100,
@@ -116,14 +146,22 @@ struct ContentView: View {
         stringArray: ["a", "b", "c"]
     )
     
+    // 追加: Doubleコピーのデモ
+    @State private var doubleModel = DoubleCopyDemoModel(initial: 4.0)
+    
     private var isValueLeq3: Bool {
         value <= 3
     }
     
     private let doubleInput: Int = 2
     private var doubleResult: Int {
+        // double は純粋関数なので body 再評価で何度呼ばれても安全
         double(doubleInput)
     }
+    
+    // Doubleデモの「期待値」を UI に出すための補助
+    private var expectedAfterSqrt: Double { 2.0 }
+    private var expectedB: Double { 4.0 }
     
     var body: some View {
         VStack(spacing: 16) {
@@ -193,9 +231,6 @@ struct ContentView: View {
                 Text("出力: \(doubleResult)")
                     .font(.title3)
                 
-                Text("例: double(2) = 4")
-                    .foregroundStyle(.secondary)
-                
                 Text("※ func double(_ x: Int) -> Int の `_` により、呼び出しは double(2) と書ける。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -205,17 +240,47 @@ struct ContentView: View {
             .background(.thinMaterial)
             .clipShape(RoundedRectangle(cornerRadius: 12))
             
-            // 追加: struct / class / enum の表示
+            // 型定義（struct / class / enum）の表示
             VStack(alignment: .leading, spacing: 10) {
                 Text("型定義（struct / class / enum）の例")
                     .font(.headline)
                 
-                // `String(describing: Type.self)` は型名を文字列化する簡易手段
                 Text("struct: \(structTypeName)（値型）")
                 Text("class : \(classTypeName)（参照型）")
                 Text("enum  : \(enumTypeName)（状態の型）")
                 
                 Text("※ SwiftUIのViewはstructが基本。共有状態はclass（ObservableObject）を使うことが多い。UI状態はenumが便利。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding()
+            .background(.thinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            
+            // Doubleの値コピー + formSquareRoot（追加・修正版）
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Doubleの値コピー + formSquareRoot の例")
+                    .font(.headline)
+                
+                // 現在値
+                Text("rootA（aに相当）= \(doubleModel.rootA)")
+                Text("rootB（bに相当）= \(doubleModel.rootB)")
+                    .foregroundStyle(.secondary)
+                
+                // 期待される挙動を明示（教材としての“正解”）
+                Text("期待: rootAは平方根後 \(expectedAfterSqrt), rootBは \(expectedB) のまま")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                
+                Button("rootA に formSquareRoot() を適用する") {
+                    // 実行文（mutating更新）はボタンactionに置く。
+                    // ここなら「押したときだけ」実行され、body再評価で暴発しない。
+                    doubleModel.applySquareRootToA()
+                }
+                .buttonStyle(.bordered)
+                
+                Text("ポイント: Doubleは値型。rootBはrootAの“参照”ではなく“コピー”なので、rootA更新の影響を受けない。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -238,6 +303,11 @@ struct ContentView: View {
             print("struct type = \(structTypeName)")
             print("class  type = \(classTypeName)")
             print("enum   type = \(enumTypeName)")
+            
+            // Double値コピーの確認（コンソール）
+            // ここではトップレベル実行を避けているため、初期状態（4.0/4.0）を表示する。
+            print("doubleModel.rootA(initial) = \(doubleModel.rootA)")
+            print("doubleModel.rootB(initial) = \(doubleModel.rootB)")
         }
     }
 }
